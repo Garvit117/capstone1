@@ -1,6 +1,6 @@
+import pandas as pd
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, count, lit
-from pyspark.sql.window import Window
+from pyspark.sql.functions import col, when, count
 from pyspark.sql import functions as F
 
 # Initialize Spark session with Hive support
@@ -9,16 +9,15 @@ spark = SparkSession.builder \
     .enableHiveSupport() \
     .getOrCreate()
 
-# Load data into Spark DataFrames
-policy_df = spark.read.format("com.crealytics.spark.excel") \
-    .option("useHeader", "true") \
-    .load("Policy features.xlsx")
+# Load data into Pandas DataFrames
+policy_df_pd = pd.read_excel('Policy features.xlsx')
+claim_df_pd = pd.read_excel('Insurance claim.xlsx')
 
-claim_df = spark.read.format("com.crealytics.spark.excel") \
-    .option("useHeader", "true") \
-    .load("Insurance claim.xlsx")
+# Convert Pandas DataFrames to Spark DataFrames
+policy_df = spark.createDataFrame(policy_df_pd)
+claim_df = spark.createDataFrame(claim_df_pd)
 
-# Merge DataFrames
+# Join DataFrames without broadcast
 data_df = policy_df.join(claim_df, on="policy_id", how="inner")
 
 # Handle duplicates
@@ -53,7 +52,10 @@ def iqr_trim(df, columns):
 
 trimmed_df = iqr_trim(new_df, ["age_of_car", "age_of_policyholder", "population_density"])
 
-# Save the processed DataFrame into Hive table
-trimmed_df.write.mode("overwrite").saveAsTable("processed_data")
+# Save the processed DataFrame into Hive table with partitioning and optimized format
+trimmed_df.write.mode("overwrite") \
+    .partitionBy("year", "month") \
+    .parquet("hdfs:///path/to/processed_data.parquet")
 
+# Stop the Spark session
 spark.stop()
