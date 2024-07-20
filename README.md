@@ -1,6 +1,5 @@
-import pandas as pd
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, count
+from pyspark.sql.functions import col, when, count, first
 from pyspark.sql import functions as F
 
 # Initialize Spark session with Hive support
@@ -9,13 +8,9 @@ spark = SparkSession.builder \
     .enableHiveSupport() \
     .getOrCreate()
 
-# Load data into Pandas DataFrames
-policy_df_pd = pd.read_excel('Policy features.xlsx')
-claim_df_pd = pd.read_excel('Insurance claim.xlsx')
-
-# Convert Pandas DataFrames to Spark DataFrames
-policy_df = spark.createDataFrame(policy_df_pd)
-claim_df = spark.createDataFrame(claim_df_pd)
+# Read CSV files into Spark DataFrames
+policy_df = spark.read.csv('Policy_features.csv', header=True, inferSchema=True)
+claim_df = spark.read.csv('Insurance_claim.csv', header=True, inferSchema=True)
 
 # Join DataFrames without broadcast
 data_df = policy_df.join(claim_df, on="policy_id", how="inner")
@@ -26,7 +21,7 @@ data_df = data_df.dropDuplicates()
 # Handle missing values by filling with column mode
 def fill_na_mode(df):
     for column in df.columns:
-        mode = df.groupBy(column).count().orderBy("count", ascending=False).first()[0]
+        mode = df.groupBy(column).agg(count('*').alias('count')).orderBy(col('count').desc()).first()[0]
         df = df.withColumn(column, when(col(column).isNull(), mode).otherwise(col(column)))
     return df
 
