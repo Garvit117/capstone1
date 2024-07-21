@@ -1,7 +1,8 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, count, when, approxQuantile, expr
+from pyspark.sql.functions import col, count, when, approxQuantile
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
 
 # Initialize Spark session with Hive support
 spark = SparkSession.builder \
@@ -63,15 +64,15 @@ def iqr_trim(df, columns, bounds):
 
 trimmed_df = iqr_trim(new_df, outlier_columns, bounds)
 
-# Collect data for plotting
-numeric_data = {col: trimmed_df.select(col).rdd.flatMap(lambda x: x).collect() for col in numeric}
+# Convert to Pandas DataFrame for plotting
+trimmed_pd_df = trimmed_df.toPandas()
 
-# Plot boxplots
+# Plot boxplots for numeric columns
 fig, axs = plt.subplots(nrows=1, ncols=len(numeric), figsize=(7 * len(numeric), 4))
 axs = axs.flatten()
 
 for i, column in enumerate(numeric):
-    sns.boxplot(x=numeric_data[column], ax=axs[i])
+    sns.boxplot(data=trimmed_pd_df, y=column, ax=axs[i])
     axs[i].set_title(column)
     axs[i].set_ylabel("Value")
 
@@ -80,9 +81,9 @@ plt.show()
 
 # Function to plot histograms
 def hist_pltr(cdf, column):
-    claim_df = cdf.filter(cdf['is_claim'] == 1).select(column).rdd.flatMap(lambda x: x).collect()
-    no_claim_df = cdf.filter(cdf['is_claim'] == 0).select(column).rdd.flatMap(lambda x: x).collect()
-    all_data = cdf.select(column).rdd.flatMap(lambda x: x).collect()
+    claim_df = cdf[cdf['is_claim'] == 1][column]
+    no_claim_df = cdf[cdf['is_claim'] == 0][column]
+    all_data = cdf[column]
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 3))
 
@@ -107,18 +108,15 @@ def hist_pltr(cdf, column):
     plt.tight_layout()
     plt.show()
 
-hist_pltr(trimmed_df, "policy_tenure")
-hist_pltr(trimmed_df, "age_of_car")
-hist_pltr(trimmed_df, "age_of_policyholder")
-hist_pltr(trimmed_df, "population_density")
+hist_pltr(trimmed_pd_df, "policy_tenure")
+hist_pltr(trimmed_pd_df, "age_of_car")
+hist_pltr(trimmed_pd_df, "age_of_policyholder")
+hist_pltr(trimmed_pd_df, "population_density")
 
 # Function to plot stacked histograms
 def hist_pt(cdf, column):
-    data = cdf.select(column, "is_claim").rdd.map(lambda row: (row[0], row[1])).collect()
-    df = pd.DataFrame(data, columns=[column, "is_claim"])
-
     plt.figure(figsize=(12, 6))
-    sns.histplot(data=df, x=column, hue="is_claim", multiple="stack", bins=20, edgecolor="black")
+    sns.histplot(data=cdf, x=column, hue="is_claim", multiple="stack", bins=20, edgecolor="black")
     plt.title(f'{column} - Classification on is_claim')
     plt.xlabel(column)
     plt.ylabel('Frequency')
@@ -126,17 +124,14 @@ def hist_pt(cdf, column):
     plt.tight_layout()
     plt.show()
 
-hist_pt(trimmed_df, "policy_tenure")
-hist_pt(trimmed_df, "age_of_car")
-hist_pt(trimmed_df, "age_of_policyholder")
-hist_pt(trimmed_df, "population_density")
+hist_pt(trimmed_pd_df, "policy_tenure")
+hist_pt(trimmed_pd_df, "age_of_car")
+hist_pt(trimmed_pd_df, "age_of_policyholder")
+hist_pt(trimmed_pd_df, "population_density")
 
 # Plot countplot
-data = trimmed_df.select("area_cluster", "is_claim").rdd.map(lambda row: (row[0], row[1])).collect()
-df = pd.DataFrame(data, columns=["area_cluster", "is_claim"])
-
 fig, axs = plt.subplots(figsize=(16, 10))
-sns.countplot(data=df, x="area_cluster", hue="is_claim")
+sns.countplot(data=trimmed_pd_df, x="area_cluster", hue="is_claim")
 plt.yscale("log")
 plt.tick_params(labelrotation=45)
 plt.tight_layout()
